@@ -1,14 +1,273 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chichi Club</title>
-    <!-- He corregido la línea de abajo para que el diseño cargue bien -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chichi Club | Biblioteca Compartida</title>
+    
+    <!-- Librerías Externas -->
     <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.263.1"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,900;1,400&family=Plus+Jakarta+Sans:wght@300;400;700;800&display=swap');
+        
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        
+        /* Animación suave para los libros */
+        .book-card { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .book-card:hover { transform: translateY(-8px); }
+        
+        /* Ocultar barra de scroll */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-[#FDFCF9]">
     <div id="root"></div>
-    <script type="module" src="/main.jsx"></script>
-  </body>
+
+    <!-- Firebase SDK -->
+    <script type="importmap">
+    {
+        "imports": {
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+        }
+    }
+    </script>
+
+    <script type="babel" data-type="module">
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+
+        const { useState, useEffect, useMemo } = React;
+
+        // --- TU CONFIGURACIÓN DE FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBAvZtxfga0eN7y6I3ooAGHkQ-fYbl1zvi",
+            authDomain: "chichi-club.firebaseapp.com",
+            projectId: "chichi-club",
+            storageBucket: "chichi-club.firebasestorage.app",
+            messagingSenderId: "258549599311",
+            appId: "1:258549599311:web:f176a7e7746fb6773f6c3a"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Componente de Iconos
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const LucideIcon = lucide[name.charAt(0).toUpperCase() + name.slice(1)];
+            return LucideIcon ? <LucideIcon size={size} className={className} /> : null;
+        };
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [libros, setLibros] = useState([]);
+            const [cargando, setCargando] = useState(true);
+            const [busqueda, setBusqueda] = useState('');
+            const [enviando, setEnviando] = useState(false);
+            const [notificacion, setNotificacion] = useState(null);
+
+            const [nuevo, setNuevo] = useState({
+                titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: ''
+            });
+
+            const notify = (texto, tipo = 'info') => {
+                setNotificacion({ texto, tipo });
+                setTimeout(() => setNotificacion(null), 5000);
+            };
+
+            useEffect(() => {
+                signInAnonymously(auth).catch(() => notify("Error de conexión", "error"));
+                return onAuthStateChanged(auth, setUser);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const ref = collection(db, 'libros_club');
+                return onSnapshot(ref, (snap) => {
+                    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setLibros(docs.sort((a, b) => (b.fecha || 0) - (a.fecha || 0)));
+                    setCargando(false);
+                }, (err) => {
+                    console.error(err);
+                    notify("Error al leer la base de datos", "error");
+                    setCargando(false);
+                });
+            }, [user]);
+
+            const guardar = async (e) => {
+                e.preventDefault();
+                if (!nuevo.titulo || !nuevo.autor) return notify("Escribe título y autor", "error");
+                setEnviando(true);
+                try {
+                    await addDoc(collection(db, 'libros_club'), {
+                        ...nuevo,
+                        usuario: `Amigo_${user.uid.substring(0, 3)}`,
+                        fecha: Date.now()
+                    });
+                    setNuevo({ titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: '' });
+                    notify("¡Libro guardado!", "success");
+                } catch (err) {
+                    notify("Error al guardar: " + err.message, "error");
+                } finally {
+                    setEnviando(false);
+                }
+            };
+
+            const borrar = async (id) => {
+                if (confirm("¿Borrar este libro?")) {
+                    try {
+                        await deleteDoc(doc(db, 'libros_club', id));
+                        notify("Eliminado");
+                    } catch (e) {
+                        notify("No tienes permiso", "error");
+                    }
+                }
+            };
+
+            const filtrados = useMemo(() => {
+                return libros.filter(l => 
+                    ((l.titulo || "") + (l.autor || "")).toLowerCase().includes(busqueda.toLowerCase())
+                );
+            }, [libros, busqueda]);
+
+            return (
+                <div className="min-h-screen pb-20 px-4 md:px-8">
+                    {notificacion && (
+                        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-2xl flex items-center gap-3 border transition-all animate-bounce ${
+                            notificacion.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 
+                            notificacion.tipo === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 
+                            'bg-stone-800 text-white border-stone-700'
+                        }`}>
+                            <Icon name={notificacion.tipo === 'error' ? "AlertCircle" : "CheckCircle2"} size={18} />
+                            <span className="text-xs font-bold uppercase tracking-tight">{notificacion.texto}</span>
+                        </div>
+                    )}
+
+                    <header className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center py-8 gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-stone-900 p-3 rounded-2xl text-white shadow-xl rotate-3">
+                                <Icon name="Library" size={28} />
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-black italic text-stone-900 leading-none font-serif">Chichi Club</h1>
+                                <p className="text-[10px] uppercase font-black text-stone-400 tracking-[0.3em] mt-2">Biblioteca Viva</p>
+                            </div>
+                        </div>
+                        <div className="relative w-full md:w-80">
+                            <Icon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" size={16} />
+                            <input 
+                                type="text" placeholder="Buscar por título o autor..."
+                                className="w-full pl-12 pr-6 py-4 bg-white rounded-[1.5rem] shadow-sm border border-stone-100 outline-none focus:ring-2 focus:ring-stone-200 transition-all font-medium text-sm"
+                                value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                            />
+                        </div>
+                    </header>
+
+                    <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 mt-4">
+                        <div className="lg:col-span-4">
+                            <div className="bg-white p-8 rounded-[3rem] shadow-2xl shadow-stone-200/20 border border-stone-50 sticky top-10">
+                                <h2 className="text-xl font-black mb-8 flex items-center gap-2 text-stone-800 italic font-serif underline decoration-orange-200 decoration-4">
+                                    Recomendar Libro
+                                </h2>
+                                <form onSubmit={guardar} className="space-y-6 text-sm font-bold text-stone-400">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] uppercase tracking-widest ml-1 font-sans">Título</label>
+                                        <input type="text" required className="w-full p-4 bg-stone-50 rounded-2xl border-none outline-none focus:bg-white focus:ring-1 focus:ring-stone-100 text-stone-800 font-sans"
+                                            value={nuevo.titulo} onChange={e => setNuevo({...nuevo, titulo: e.target.value})} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] uppercase tracking-widest ml-1 font-sans">Autor</label>
+                                        <input type="text" required className="w-full p-4 bg-stone-50 rounded-2xl border-none outline-none focus:bg-white focus:ring-1 focus:ring-stone-100 text-stone-800 font-sans"
+                                            value={nuevo.autor} onChange={e => setNuevo({...nuevo, autor: e.target.value})} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] uppercase tracking-widest ml-1 font-sans">Nota: {nuevo.puntuacion}⭐</label>
+                                            <input type="range" min="1" max="5" className="w-full accent-stone-900 cursor-pointer"
+                                                value={nuevo.puntuacion} onChange={e => setNuevo({...nuevo, puntuacion: parseInt(e.target.value)})} />
+                                        </div>
+                                        <div className="space-y-2 text-right">
+                                            <label className="text-[10px] uppercase tracking-widest mr-1 font-sans">Género</label>
+                                            <select className="bg-transparent border-none outline-none text-stone-800 font-black cursor-pointer font-sans"
+                                                value={nuevo.genero} onChange={e => setNuevo({...nuevo, genero: e.target.value})}>
+                                                <option>Ficción</option><option>Ensayo</option><option>Misterio</option><option>Fantasía</option><option>Poesía</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <textarea className="w-full p-5 bg-stone-50 rounded-[2rem] h-32 outline-none italic text-stone-600 font-medium font-serif"
+                                        value={nuevo.resena} onChange={e => setNuevo({...nuevo, resena: e.target.value})} placeholder="¿Por qué deberíamos leerlo?" />
+                                    <button type="submit" disabled={enviando} className="w-full bg-stone-900 text-white font-black py-5 rounded-[2rem] hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl shadow-stone-200 tracking-widest text-[10px] font-sans">
+                                        {enviando ? "PUBLICANDO..." : "AÑADIR AL CLUB"}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-8">
+                            <h2 className="text-4xl font-black text-stone-800 tracking-tight mb-12 font-serif">
+                                Estantería <span className="text-stone-300 font-normal italic text-2xl">compartida</span>
+                            </h2>
+                            {cargando ? (
+                                <div className="text-center py-24 flex flex-col items-center gap-4 text-stone-300">
+                                    <div className="animate-spin h-8 w-8 border-4 border-stone-200 border-t-stone-800 rounded-full"></div>
+                                    <p className="italic font-serif">Desempolvando los libros...</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {filtrados.map(l => (
+                                        <article key={l.id} className="book-card bg-white p-8 rounded-[3.5rem] border border-stone-50 shadow-sm hover:shadow-2xl relative flex flex-col h-full group overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-12 -mt-12 opacity-20 transition-transform group-hover:scale-150"></div>
+                                            <button onClick={() => borrar(l.id)} className="absolute top-8 right-8 text-stone-100 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2 z-10">
+                                                <Icon name="Trash2" size={18} />
+                                            </button>
+                                            <div className="flex justify-between items-start mb-6 z-10 font-sans">
+                                                <span className="bg-stone-900 text-white text-[9px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full shadow-lg">
+                                                    {l.genero}
+                                                </span>
+                                                <div className="flex gap-0.5 text-amber-400">
+                                                    {[...Array(5)].map((_, i) => <Icon key={i} name="Star" size={12} className={i < l.puntuacion ? "fill-amber-400" : "text-stone-100"} />)}
+                                                </div>
+                                            </div>
+                                            <h3 className="text-2xl font-black text-stone-900 leading-tight mb-2 font-serif italic z-10">{l.titulo}</h3>
+                                            <p className="text-stone-400 italic text-sm mb-6 flex items-center gap-2 font-serif z-10">
+                                                <Icon name="ChevronRight" size={14} className="text-orange-800" /> {l.autor}
+                                            </p>
+                                            {l.resena && <div className="bg-stone-50/50 p-6 rounded-[2.5rem] mb-10 mt-2 flex-1 border-l-2 border-stone-100 italic text-stone-600 text-sm leading-relaxed font-serif z-10">"{l.resena}"</div>}
+                                            <div className="mt-auto pt-6 border-t border-stone-50 flex justify-between items-center text-[9px] text-stone-300 font-bold uppercase tracking-[0.15em] font-sans z-10">
+                                                <span className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center text-[8px]">{l.usuario?.charAt(7)}</div>
+                                                    {l.usuario}
+                                                </span>
+                                                <span>{new Date(l.fecha).toLocaleDateString()}</span>
+                                            </div>
+                                        </article>
+                                    ))}
+                                    {filtrados.length === 0 && (
+                                        <div className="col-span-full py-40 text-center border-2 border-dashed border-stone-100 rounded-[4rem] text-stone-200 font-black tracking-widest font-sans">
+                                            <Icon name="BookOpen" size={48} className="mx-auto mb-4 opacity-20" />
+                                            ESTANTERÍA VACÍA
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
 </html>
