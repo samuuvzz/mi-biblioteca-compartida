@@ -3,8 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  onAuthStateChanged, 
-  signInWithCustomToken 
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -29,12 +28,20 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN DE FIREBASE (Entorno de Canvas) ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- TU CONFIGURACIÓN REAL DE FIREBASE (Para que funcione en Vercel) ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBAvZtxfga0eN7y6I3ooAGHkQ-fYbl1zvi",
+  authDomain: "chichi-club.firebaseapp.com",
+  projectId: "chichi-club",
+  storageBucket: "chichi-club.firebasestorage.app",
+  messagingSenderId: "258549599311",
+  appId: "1:258549599311:web:f176a7e7746fb6773f6c3a",
+  measurementId: "G-9REPSYELMH"
+};
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'club-lectura-demo';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -58,27 +65,16 @@ export default function App() {
     setTimeout(() => setNotificacion(null), 4000);
   };
 
-  // 1. Autenticación Inicial
+  // 1. Autenticación Inicial Anónima
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) {
-        notify("Error de conexión", "error");
-      }
-    };
-    initAuth();
+    signInAnonymously(auth).catch(() => notify("Error de conexión con Firebase", "error"));
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // 2. Datos en tiempo real
+  // 2. Datos en tiempo real (Colección simple 'libros')
   useEffect(() => {
     if (!user) return;
-    const ref = collection(db, 'artifacts', appId, 'public', 'data', 'biblioteca_club');
+    const ref = collection(db, 'libros');
     
     const unsub = onSnapshot(ref, (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -94,11 +90,11 @@ export default function App() {
   const guardar = async (e) => {
     e.preventDefault();
     if (!nuevo.titulo || !nuevo.autor) return notify("Título y autor requeridos", "error");
-    if (!user) return;
+    if (!user) return notify("Esperando conexión...", "info");
 
     setEnviando(true);
     try {
-      const ref = collection(db, 'artifacts', appId, 'public', 'data', 'biblioteca_club');
+      const ref = collection(db, 'libros');
       await addDoc(ref, {
         ...nuevo,
         usuario: `Amigo_${user.uid.substring(0, 3)}`,
@@ -107,7 +103,7 @@ export default function App() {
       setNuevo({ titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: '' });
       notify("¡Libro recomendado!", "success");
     } catch (err) {
-      notify("Error al guardar", "error");
+      notify("Error al guardar: " + err.message, "error");
     } finally {
       setEnviando(false);
     }
@@ -116,7 +112,7 @@ export default function App() {
   const borrar = async (id) => {
     if (confirm("¿Seguro que quieres borrar este libro?")) {
       try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'biblioteca_club', id));
+        await deleteDoc(doc(db, 'libros', id));
         notify("Libro eliminado");
       } catch (e) {
         notify("Error al eliminar", "error");
@@ -126,7 +122,7 @@ export default function App() {
 
   const filtrados = useMemo(() => {
     return libros.filter(l => {
-      const texto = (l.titulo + l.autor).toLowerCase();
+      const texto = ((l.titulo || "") + (l.autor || "")).toLowerCase();
       const matchBusqueda = texto.includes(busqueda.toLowerCase());
       const matchGenero = filtroGenero === 'Todos' || l.genero === filtroGenero;
       return matchBusqueda && matchGenero;
