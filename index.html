@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chichi Club | Biblioteca Compartida</title>
     
-    <!-- Cargamos todo desde internet para que no falle nada -->
+    <!-- Librerías Externas (Cargadas directamente) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -14,16 +14,19 @@
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,900;1,400&family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #FCFBF7; }
         .font-serif { font-family: 'Playfair Display', serif; }
-        .book-card { transition: all 0.4s ease; }
-        .book-card:hover { transform: translateY(-6px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); }
+        
+        /* Animación para las tarjetas */
+        .book-card { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .book-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1); }
     </style>
 </head>
-<body class="bg-[#FCFBF7]">
+<body>
     <div id="root"></div>
 
-    <!-- Firebase -->
+    <!-- Configuración de Firebase -->
     <script type="importmap">
     {
         "imports": {
@@ -55,6 +58,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // Ayudante para iconos
         const LucideIcon = ({ name, size = 20, className = "" }) => {
             const IconComponent = lucide[name];
             return IconComponent ? <IconComponent size={size} className={className} /> : null;
@@ -74,7 +78,7 @@
 
             const notify = (texto, tipo = 'info') => {
                 setNotificacion({ texto, tipo });
-                setTimeout(() => setNotificacion(null), 4000);
+                setTimeout(() => setNotificacion(null), 5000);
             };
 
             useEffect(() => {
@@ -84,12 +88,13 @@
 
             useEffect(() => {
                 if (!user) return;
+                // Usamos la colección 'libros_club' que confirmamos que funciona
                 const ref = collection(db, 'libros_club');
                 return onSnapshot(ref, (snap) => {
                     const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     setLibros(docs.sort((a, b) => (b.fecha || 0) - (a.fecha || 0)));
                     setCargando(false);
-                }, () => {
+                }, (err) => {
                     notify("Error de permisos en Firebase", "error");
                     setCargando(false);
                 });
@@ -106,7 +111,7 @@
                         fecha: Date.now()
                     });
                     setNuevo({ titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: '' });
-                    notify("¡Libro guardado!", "success");
+                    notify("¡Libro añadido!", "success");
                 } catch (err) {
                     notify("Error: " + err.message, "error");
                 } finally {
@@ -115,7 +120,7 @@
             };
 
             const borrar = async (id) => {
-                if (confirm("¿Borrar este libro?")) {
+                if (confirm("¿Borrar libro?")) {
                     await deleteDoc(doc(db, 'libros_club', id));
                     notify("Eliminado");
                 }
@@ -130,35 +135,35 @@
             return (
                 <div className="max-w-6xl mx-auto px-4 py-8">
                     {notificacion && (
-                        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-xl flex items-center gap-3 border animate-bounce ${
-                            notificacion.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-800 text-white'
+                        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-2xl flex items-center gap-3 border animate-bounce ${
+                            notificacion.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-900 text-white'
                         }`}>
                             <span className="text-xs font-bold uppercase">{notificacion.texto}</span>
                         </div>
                     )}
 
-                    <header className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+                    <header className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6 px-4">
                         <div className="flex items-center gap-4">
-                            <div className="bg-stone-900 p-3 rounded-2xl text-white shadow-lg">
+                            <div className="bg-stone-900 p-3 rounded-2xl text-white shadow-xl rotate-3">
                                 <LucideIcon name="Library" size={28} />
                             </div>
                             <h1 className="text-3xl font-black italic text-stone-900 font-serif">Chichi Club</h1>
                         </div>
-                        <div className="relative w-full md:w-80 font-sans">
+                        <div className="relative w-full md:w-80">
                             <LucideIcon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" size={16} />
                             <input 
                                 type="text" placeholder="Buscar libro..."
-                                className="w-full pl-12 pr-6 py-4 bg-white rounded-2xl shadow-sm border border-stone-100 outline-none focus:ring-2 focus:ring-stone-200 transition-all text-sm"
+                                className="w-full pl-12 pr-6 py-4 bg-white rounded-2xl shadow-sm border border-stone-100 outline-none focus:ring-2 focus:ring-stone-200 text-sm font-sans"
                                 value={busqueda} onChange={e => setBusqueda(e.target.value)}
                             />
                         </div>
                     </header>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-                        <div className="lg:col-span-4">
-                            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 sticky top-10 font-sans">
-                                <h2 className="text-xl font-bold mb-6 font-serif underline decoration-orange-100 decoration-4">Recomendar</h2>
-                                <form onSubmit={guardar} className="space-y-5 text-sm">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                        <div className="lg:col-span-4 px-4">
+                            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 sticky top-10">
+                                <h2 className="text-xl font-bold mb-6 font-serif italic border-b-4 border-orange-100 inline-block">Nueva Lectura</h2>
+                                <form onSubmit={guardar} className="space-y-5 text-sm font-sans">
                                     <input type="text" placeholder="Título" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
                                         value={nuevo.titulo} onChange={e => setNuevo({...nuevo, titulo: e.target.value})} />
                                     <input type="text" placeholder="Autor" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
@@ -171,39 +176,40 @@
                                     <textarea placeholder="Reseña corta..." className="w-full p-4 bg-stone-50 rounded-xl h-32 outline-none italic font-serif"
                                         value={nuevo.resena} onChange={e => setNuevo({...nuevo, resena: e.target.value})} />
                                     <button type="submit" disabled={enviando} className="w-full bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg tracking-widest text-xs uppercase">
-                                        {enviando ? "GUARDANDO..." : "AÑADIR AL CLUB"}
+                                        {enviando ? "Añadiendo..." : "Publicar"}
                                     </button>
                                 </form>
                             </div>
                         </div>
 
-                        <div className="lg:col-span-8">
-                            <h2 className="text-3xl font-bold mb-8 font-serif italic text-stone-800">Estantería Compartida</h2>
+                        <div className="lg:col-span-8 px-4">
+                            <h2 className="text-3xl font-bold mb-10 font-serif italic text-stone-800">Estantería Compartida</h2>
                             {cargando ? (
                                 <div className="text-center py-20 italic text-stone-300">Conectando...</div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     {filtrados.map(l => (
-                                        <article key={l.id} className="book-card bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm relative flex flex-col group overflow-hidden">
+                                        <article key={l.id} className="book-card bg-white p-8 rounded-[2.5rem] border border-stone-50 shadow-sm relative flex flex-col group overflow-hidden">
                                             <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-12 -mt-12 opacity-30"></div>
-                                            <button onClick={() => borrar(l.id)} className="absolute top-4 right-4 text-stone-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                            <button onClick={() => borrar(l.id)} className="absolute top-6 right-6 text-stone-100 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
                                                 <LucideIcon name="Trash2" size={16} />
                                             </button>
-                                            <div className="flex justify-between items-start mb-4">
-                                                <span className="bg-stone-900 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-lg">{l.genero}</span>
+                                            <div className="flex justify-between items-start mb-6">
+                                                <span className="bg-stone-900 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg font-sans">{l.genero}</span>
                                                 <div className="flex text-amber-400 text-xs">
-                                                  {[...Array(l.puntuacion)].map((_, i) => <LucideIcon key={i} name="Star" size={12} className="fill-current" />)}
+                                                  {"⭐".repeat(l.puntuacion)}
                                                 </div>
                                             </div>
-                                            <h3 className="text-xl font-bold text-stone-900 font-serif leading-tight italic">{l.titulo}</h3>
-                                            <p className="text-stone-400 italic text-xs mb-4">por {l.autor}</p>
-                                            {l.resena && <div className="bg-stone-50/50 p-4 rounded-xl mb-6 text-stone-600 text-sm italic font-serif leading-relaxed line-clamp-3">"{l.resena}"</div>}
-                                            <div className="mt-auto pt-4 border-t border-stone-50 flex justify-between items-center text-[9px] text-stone-300 font-bold uppercase tracking-widest">
+                                            <h3 className="text-2xl font-bold text-stone-900 font-serif leading-tight italic">{l.titulo}</h3>
+                                            <p className="text-stone-400 italic text-xs mb-6 font-serif">por {l.autor}</p>
+                                            {l.resena && <div className="bg-stone-50/50 p-5 rounded-2xl mb-8 text-stone-600 text-sm italic font-serif leading-relaxed line-clamp-4">"{l.resena}"</div>}
+                                            <div className="mt-auto pt-6 border-t border-stone-50 flex justify-between items-center text-[9px] text-stone-300 font-bold uppercase tracking-widest font-sans">
                                                 <span>{l.usuario}</span>
                                                 <span>{new Date(l.fecha).toLocaleDateString()}</span>
                                             </div>
                                         </article>
                                     ))}
+                                    {filtrados.length === 0 && <div className="col-span-full py-40 text-center border-2 border-dashed border-stone-100 rounded-[3rem] text-stone-200 font-bold italic">No hay libros todavía.</div>}
                                 </div>
                             )}
                         </div>
