@@ -21,6 +21,11 @@
         /* Animación para las tarjetas */
         .book-card { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         .book-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1); }
+        
+        /* Estilo para el scroll */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -58,10 +63,10 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Ayudante para iconos
+        // Ayudante para iconos (Versión compatible con CDN)
         const LucideIcon = ({ name, size = 20, className = "" }) => {
-            const IconComponent = lucide[name];
-            return IconComponent ? <IconComponent size={size} className={className} /> : null;
+            const IconComponent = lucide[name] || lucide.Book;
+            return <IconComponent size={size} className={className} />;
         };
 
         function App() {
@@ -88,14 +93,13 @@
 
             useEffect(() => {
                 if (!user) return;
-                // Usamos la colección 'libros_club' que confirmamos que funciona
                 const ref = collection(db, 'libros_club');
                 return onSnapshot(ref, (snap) => {
                     const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     setLibros(docs.sort((a, b) => (b.fecha || 0) - (a.fecha || 0)));
                     setCargando(false);
                 }, (err) => {
-                    notify("Error de permisos en Firebase", "error");
+                    notify("Revisa las reglas de Firestore", "error");
                     setCargando(false);
                 });
             }, [user]);
@@ -164,16 +168,16 @@
                             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 sticky top-10">
                                 <h2 className="text-xl font-bold mb-6 font-serif italic border-b-4 border-orange-100 inline-block">Nueva Lectura</h2>
                                 <form onSubmit={guardar} className="space-y-5 text-sm font-sans">
-                                    <input type="text" placeholder="Título" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
+                                    <input type="text" placeholder="Título" required className="w-full p-4 bg-stone-50 rounded-xl border border-stone-50 outline-none focus:bg-white"
                                         value={nuevo.titulo} onChange={e => setNuevo({...nuevo, titulo: e.target.value})} />
-                                    <input type="text" placeholder="Autor" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
+                                    <input type="text" placeholder="Autor" required className="w-full p-4 bg-stone-50 rounded-xl border border-stone-50 outline-none focus:bg-white"
                                         value={nuevo.autor} onChange={e => setNuevo({...nuevo, autor: e.target.value})} />
                                     <div className="flex justify-between items-center text-[10px] font-bold text-stone-400">
                                         <span>NOTA: {nuevo.puntuacion}⭐</span>
                                         <input type="range" min="1" max="5" value={nuevo.puntuacion} className="accent-stone-900"
                                             onChange={e => setNuevo({...nuevo, puntuacion: parseInt(e.target.value)})} />
                                     </div>
-                                    <textarea placeholder="Reseña corta..." className="w-full p-4 bg-stone-50 rounded-xl h-32 outline-none italic font-serif"
+                                    <textarea placeholder="Reseña corta..." className="w-full p-4 bg-stone-50 rounded-xl h-32 border border-stone-50 outline-none italic font-serif"
                                         value={nuevo.resena} onChange={e => setNuevo({...nuevo, resena: e.target.value})} />
                                     <button type="submit" disabled={enviando} className="w-full bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg tracking-widest text-xs uppercase">
                                         {enviando ? "Añadiendo..." : "Publicar"}
