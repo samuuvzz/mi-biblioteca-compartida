@@ -1,259 +1,219 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
-import { 
-  Library, Plus, Star, Users, BookOpen, Trash2, Search, Loader2, AlertCircle, CheckCircle2, MessageSquare, ChevronRight, Quote
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chichi Club | Biblioteca Compartida</title>
+    
+    <!-- Cargamos todo desde internet para que no falle nada -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,900;1,400&family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .book-card { transition: all 0.4s ease; }
+        .book-card:hover { transform: translateY(-6px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); }
+    </style>
+</head>
+<body class="bg-[#FCFBF7]">
+    <div id="root"></div>
 
-// --- CONFIGURACIÓN DE ENTORNO (Para el Canvas) ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'chichi-club-v3';
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [libros, setLibros] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [busqueda, setBusqueda] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [notificacion, setNotificacion] = useState(null);
-
-  const [nuevo, setNuevo] = useState({
-    titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: ''
-  });
-
-  const notify = (texto, tipo = 'info') => {
-    setNotificacion({ texto, tipo });
-    setTimeout(() => setNotificacion(null), 5000);
-  };
-
-  // 1. AUTENTICACIÓN (REGLA 3: Auth siempre primero)
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+    <!-- Firebase -->
+    <script type="importmap">
+    {
+        "imports": {
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
         }
-      } catch (e) {
-        notify("Error de conexión", "error");
-      }
-    };
-    initAuth();
-    return onAuthStateChanged(auth, setUser);
-  }, []);
-
-  // 2. DATOS (REGLA 1: Rutas estrictas /artifacts/...)
-  useEffect(() => {
-    if (!user) return;
-    
-    // Ruta obligatoria para evitar errores de permisos
-    const ref = collection(db, 'artifacts', appId, 'public', 'data', 'libros');
-    
-    const unsub = onSnapshot(ref, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // REGLA 2: Ordenar en memoria, no en la query
-      setLibros(docs.sort((a, b) => (b.fecha || 0) - (a.fecha || 0)));
-      setCargando(false);
-    }, (err) => {
-      notify("Error al leer la base de datos", "error");
-      setCargando(false);
-    });
-    
-    return () => unsub();
-  }, [user]);
-
-  const guardar = async (e) => {
-    e.preventDefault();
-    if (!nuevo.titulo || !nuevo.autor) return notify("Título y autor requeridos", "error");
-    if (!user) return notify("Conectando...", "info");
-
-    setEnviando(true);
-    try {
-      const ref = collection(db, 'artifacts', appId, 'public', 'data', 'libros');
-      await addDoc(ref, {
-        ...nuevo,
-        usuario: `Amigo_${user.uid.substring(0, 3)}`,
-        fecha: Date.now()
-      });
-      setNuevo({ titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: '' });
-      notify("¡Libro recomendado!", "success");
-    } catch (err) {
-      notify("No se pudo guardar: " + err.message, "error");
-    } finally {
-      setEnviando(false);
     }
-  };
+    </script>
 
-  const borrar = async (id) => {
-    if (confirm("¿Borrar este libro?")) {
-      try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'libros', id));
-        notify("Eliminado");
-      } catch (e) {
-        notify("Error al borrar", "error");
-      }
-    }
-  };
+    <script type="babel" data-type="module">
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 
-  const filtrados = useMemo(() => {
-    return libros.filter(l => 
-      ((l.titulo || "") + (l.autor || "")).toLowerCase().includes(busqueda.toLowerCase())
-    );
-  }, [libros, busqueda]);
+        const { useState, useEffect, useMemo } = React;
 
-  return (
-    <div className="min-h-screen bg-[#FDFCF9] font-serif text-stone-900 pb-20">
-      {/* Alerta flotante */}
-      {notificacion && (
-        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-2xl flex items-center gap-3 border animate-in fade-in slide-in-from-top-4 ${
-          notificacion.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 
-          notificacion.tipo === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 
-          'bg-stone-800 text-white border-stone-700'
-        }`}>
-          {notificacion.tipo === 'error' ? <AlertCircle size={20} /> : 
-           notificacion.tipo === 'success' ? <CheckCircle2 size={20} /> : <BookOpen size={20} />}
-          <span className="font-sans text-xs font-bold uppercase tracking-tight">{notificacion.texto}</span>
-        </div>
-      )}
+        // --- TUS CREDENCIALES REALES ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBAvZtxfga0eN7y6I3ooAGHkQ-fYbl1zvi",
+            authDomain: "chichi-club.firebaseapp.com",
+            projectId: "chichi-club",
+            storageBucket: "chichi-club.firebasestorage.app",
+            messagingSenderId: "258549599311",
+            appId: "1:258549599311:web:f176a7e7746fb6773f6c3a"
+        };
 
-      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-stone-100 px-6 py-4 shadow-sm">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-stone-900 p-2.5 rounded-2xl text-white shadow-xl rotate-3">
-              <Library size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black italic text-stone-800 tracking-tight leading-none">Chichi Club</h1>
-              <p className="text-[9px] font-sans font-black uppercase text-stone-400 tracking-[0.2em] mt-1 text-center">Biblioteca Viva</p>
-            </div>
-          </div>
-          <div className="relative flex-1 md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" size={16} />
-            <input 
-              type="text" 
-              placeholder="Buscar por libro o autor..."
-              className="w-full pl-11 pr-4 py-3 bg-stone-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-stone-100 border-none font-medium placeholder:text-stone-300 shadow-inner font-sans"
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-            />
-          </div>
-        </div>
-      </header>
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-      <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-10 mt-6">
-        {/* Formulario */}
-        <div className="lg:col-span-4">
-          <section className="bg-white p-8 rounded-[3rem] border border-stone-100 shadow-2xl shadow-stone-200/20 sticky top-28 overflow-hidden group">
-            <h2 className="text-xl font-bold mb-8 flex items-center gap-2 text-stone-800 relative font-sans underline decoration-orange-200 decoration-4 underline-offset-4">
-              <Plus className="text-orange-800" size={20} /> Recomendar
-            </h2>
-            <form onSubmit={guardar} className="space-y-6 font-sans text-sm relative">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">Título</label>
-                <input type="text" required className="w-full bg-stone-50 p-4 rounded-2xl border border-stone-50 focus:bg-white outline-none transition-all font-medium"
-                  value={nuevo.titulo} onChange={e => setNuevo({...nuevo, titulo: e.target.value})} placeholder="Ej: Rayuela" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1">Autor</label>
-                <input type="text" required className="w-full bg-stone-50 p-4 rounded-2xl border border-stone-50 focus:bg-white outline-none transition-all font-medium"
-                  value={nuevo.autor} onChange={e => setNuevo({...nuevo, autor: e.target.value})} placeholder="Julio Cortázar" />
-              </div>
-              <div className="grid grid-cols-2 gap-4 py-2 border-y border-stone-50">
-                <div className="space-y-2 text-center">
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block">Nota: {nuevo.puntuacion}⭐</label>
-                  <input type="range" min="1" max="5" className="w-full accent-stone-900 mt-4 cursor-pointer"
-                    value={nuevo.puntuacion} onChange={e => setNuevo({...nuevo, puntuacion: parseInt(e.target.value)})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest ml-1 text-right block">Género</label>
-                  <select className="w-full bg-stone-50 p-4 rounded-2xl border-none outline-none cursor-pointer font-bold text-stone-600 appearance-none shadow-sm"
-                    value={nuevo.genero} onChange={e => setNuevo({...nuevo, genero: e.target.value})}>
-                    <option>Ficción</option><option>Ensayo</option><option>Misterio</option><option>Fantasía</option><option>Poesía</option>
-                  </select>
-                </div>
-              </div>
-              <textarea className="w-full bg-stone-50 p-5 rounded-[2.5rem] h-40 focus:bg-white outline-none resize-none transition-all italic text-stone-600 font-medium leading-relaxed font-serif"
-                value={nuevo.resena} onChange={e => setNuevo({...nuevo, resena: e.target.value})} placeholder="¿Por qué deberíamos leerlo?" />
-              <button type="submit" disabled={enviando} className="w-full bg-stone-900 text-white font-black py-5 rounded-[2rem] hover:bg-black active:scale-[0.98] transition-all shadow-2xl shadow-stone-300 flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]">
-                {enviando ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-                {enviando ? 'Guardando...' : 'Añadir al Club'}
-              </button>
-            </form>
-          </section>
-        </div>
+        const LucideIcon = ({ name, size = 20, className = "" }) => {
+            const IconComponent = lucide[name];
+            return IconComponent ? <IconComponent size={size} className={className} /> : null;
+        };
 
-        {/* Estantería */}
-        <div className="lg:col-span-8">
-          <h2 className="text-4xl font-black text-stone-800 tracking-tight flex items-center gap-4 mb-10 italic">
-            <BookOpen className="text-orange-900" size={36} /> 
-            <span>Estantería <span className="text-stone-300 font-normal italic font-serif text-2xl">compartida</span></span>
-          </h2>
+        function App() {
+            const [user, setUser] = useState(null);
+            const [libros, setLibros] = useState([]);
+            const [cargando, setCargando] = useState(true);
+            const [busqueda, setBusqueda] = useState('');
+            const [enviando, setEnviando] = useState(false);
+            const [notificacion, setNotificacion] = useState(null);
 
-          {cargando ? (
-            <div className="flex flex-col items-center justify-center py-40 text-stone-300 italic">
-              <Loader2 className="animate-spin mb-6" size={48} />
-              <p className="font-sans font-bold text-xs uppercase tracking-widest">Sincronizando biblioteca...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {filtrados.map(l => (
-                <article key={l.id} className="bg-white p-8 rounded-[3.5rem] border border-stone-50 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-700 group relative flex flex-col h-full overflow-hidden">
-                  <button onClick={() => borrar(l.id)} className="absolute top-8 right-8 text-stone-100 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2 z-10">
-                    <Trash2 size={20} />
-                  </button>
+            const [nuevo, setNuevo] = useState({
+                titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: ''
+            });
 
-                  <div className="flex justify-between items-start mb-8 font-sans z-10">
-                    <span className="bg-stone-900 text-white text-[9px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full shadow-lg">
-                      {l.genero}
-                    </span>
-                    <div className="flex gap-0.5 text-amber-400">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} size={12} fill={i < l.puntuacion ? "currentColor" : "none"} className={i < l.puntuacion ? "" : "text-stone-100"} />
-                      ))}
+            const notify = (texto, tipo = 'info') => {
+                setNotificacion({ texto, tipo });
+                setTimeout(() => setNotificacion(null), 4000);
+            };
+
+            useEffect(() => {
+                signInAnonymously(auth).catch(() => notify("Error de conexión", "error"));
+                return onAuthStateChanged(auth, setUser);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                const ref = collection(db, 'libros_club');
+                return onSnapshot(ref, (snap) => {
+                    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    setLibros(docs.sort((a, b) => (b.fecha || 0) - (a.fecha || 0)));
+                    setCargando(false);
+                }, () => {
+                    notify("Error de permisos en Firebase", "error");
+                    setCargando(false);
+                });
+            }, [user]);
+
+            const guardar = async (e) => {
+                e.preventDefault();
+                if (!nuevo.titulo || !nuevo.autor) return notify("Título y autor requeridos", "error");
+                setEnviando(true);
+                try {
+                    await addDoc(collection(db, 'libros_club'), {
+                        ...nuevo,
+                        usuario: `Amigo_${user.uid.substring(0, 3)}`,
+                        fecha: Date.now()
+                    });
+                    setNuevo({ titulo: '', autor: '', genero: 'Ficción', puntuacion: 5, resena: '' });
+                    notify("¡Libro guardado!", "success");
+                } catch (err) {
+                    notify("Error: " + err.message, "error");
+                } finally {
+                    setEnviando(false);
+                }
+            };
+
+            const borrar = async (id) => {
+                if (confirm("¿Borrar este libro?")) {
+                    await deleteDoc(doc(db, 'libros_club', id));
+                    notify("Eliminado");
+                }
+            };
+
+            const filtrados = useMemo(() => {
+                return libros.filter(l => 
+                    ((l.titulo || "") + (l.autor || "")).toLowerCase().includes(busqueda.toLowerCase())
+                );
+            }, [libros, busqueda]);
+
+            return (
+                <div className="max-w-6xl mx-auto px-4 py-8">
+                    {notificacion && (
+                        <div className={`fixed top-6 right-6 z-50 p-4 rounded-2xl shadow-xl flex items-center gap-3 border animate-bounce ${
+                            notificacion.tipo === 'error' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-800 text-white'
+                        }`}>
+                            <span className="text-xs font-bold uppercase">{notificacion.texto}</span>
+                        </div>
+                    )}
+
+                    <header className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-stone-900 p-3 rounded-2xl text-white shadow-lg">
+                                <LucideIcon name="Library" size={28} />
+                            </div>
+                            <h1 className="text-3xl font-black italic text-stone-900 font-serif">Chichi Club</h1>
+                        </div>
+                        <div className="relative w-full md:w-80 font-sans">
+                            <LucideIcon name="Search" className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" size={16} />
+                            <input 
+                                type="text" placeholder="Buscar libro..."
+                                className="w-full pl-12 pr-6 py-4 bg-white rounded-2xl shadow-sm border border-stone-100 outline-none focus:ring-2 focus:ring-stone-200 transition-all text-sm"
+                                value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                            />
+                        </div>
+                    </header>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+                        <div className="lg:col-span-4">
+                            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-stone-100 sticky top-10 font-sans">
+                                <h2 className="text-xl font-bold mb-6 font-serif underline decoration-orange-100 decoration-4">Recomendar</h2>
+                                <form onSubmit={guardar} className="space-y-5 text-sm">
+                                    <input type="text" placeholder="Título" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
+                                        value={nuevo.titulo} onChange={e => setNuevo({...nuevo, titulo: e.target.value})} />
+                                    <input type="text" placeholder="Autor" required className="w-full p-4 bg-stone-50 rounded-xl outline-none"
+                                        value={nuevo.autor} onChange={e => setNuevo({...nuevo, autor: e.target.value})} />
+                                    <div className="flex justify-between items-center text-[10px] font-bold text-stone-400">
+                                        <span>NOTA: {nuevo.puntuacion}⭐</span>
+                                        <input type="range" min="1" max="5" value={nuevo.puntuacion} className="accent-stone-900"
+                                            onChange={e => setNuevo({...nuevo, puntuacion: parseInt(e.target.value)})} />
+                                    </div>
+                                    <textarea placeholder="Reseña corta..." className="w-full p-4 bg-stone-50 rounded-xl h-32 outline-none italic font-serif"
+                                        value={nuevo.resena} onChange={e => setNuevo({...nuevo, resena: e.target.value})} />
+                                    <button type="submit" disabled={enviando} className="w-full bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg tracking-widest text-xs uppercase">
+                                        {enviando ? "GUARDANDO..." : "AÑADIR AL CLUB"}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-8">
+                            <h2 className="text-3xl font-bold mb-8 font-serif italic text-stone-800">Estantería Compartida</h2>
+                            {cargando ? (
+                                <div className="text-center py-20 italic text-stone-300">Conectando...</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
+                                    {filtrados.map(l => (
+                                        <article key={l.id} className="book-card bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm relative flex flex-col group overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-12 -mt-12 opacity-30"></div>
+                                            <button onClick={() => borrar(l.id)} className="absolute top-4 right-4 text-stone-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                <LucideIcon name="Trash2" size={16} />
+                                            </button>
+                                            <div className="flex justify-between items-start mb-4">
+                                                <span className="bg-stone-900 text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-lg">{l.genero}</span>
+                                                <div className="flex text-amber-400 text-xs">
+                                                  {[...Array(l.puntuacion)].map((_, i) => <LucideIcon key={i} name="Star" size={12} className="fill-current" />)}
+                                                </div>
+                                            </div>
+                                            <h3 className="text-xl font-bold text-stone-900 font-serif leading-tight italic">{l.titulo}</h3>
+                                            <p className="text-stone-400 italic text-xs mb-4">por {l.autor}</p>
+                                            {l.resena && <div className="bg-stone-50/50 p-4 rounded-xl mb-6 text-stone-600 text-sm italic font-serif leading-relaxed line-clamp-3">"{l.resena}"</div>}
+                                            <div className="mt-auto pt-4 border-t border-stone-50 flex justify-between items-center text-[9px] text-stone-300 font-bold uppercase tracking-widest">
+                                                <span>{l.usuario}</span>
+                                                <span>{new Date(l.fecha).toLocaleDateString()}</span>
+                                            </div>
+                                        </article>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                  </div>
-
-                  <h3 className="text-2xl font-black text-stone-900 leading-[1.1] mb-2 italic">{l.titulo}</h3>
-                  <div className="flex items-center gap-2 text-stone-400 italic text-sm font-sans">
-                    <ChevronRight size={14} className="text-orange-800" />
-                    <span>{l.autor}</span>
-                  </div>
-                  
-                  {l.resena && (
-                    <div className="bg-stone-50/70 p-7 rounded-[2.5rem] mb-10 mt-6 flex-1 relative border-l-2 border-stone-100 italic text-stone-600 text-sm leading-relaxed font-serif z-10">
-                      <Quote className="absolute -top-3 -right-3 text-stone-100 opacity-50" size={32} />
-                      "{l.resena}"
-                    </div>
-                  )}
-
-                  <div className="mt-auto pt-6 border-t border-stone-50 flex justify-between items-center text-[9px] text-stone-300 font-bold uppercase tracking-[0.15em] font-sans">
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center text-[8px] font-black">
-                        {l.usuario?.charAt(7) || 'L'}
-                      </div>
-                      <span>{l.usuario}</span>
-                    </div>
-                    <span>{new Date(l.fecha).toLocaleDateString()}</span>
-                  </div>
-                </article>
-              ))}
-
-              {filtrados.length === 0 && (
-                <div className="col-span-full py-40 text-center border-2 border-dashed border-stone-100 rounded-[4rem] bg-stone-50/20">
-                  <Library className="mx-auto text-stone-100 mb-6 scale-150 opacity-20" size={64} />
-                  <p className="text-stone-300 italic text-lg">La biblioteca está vacía...</p>
-                  <p className="text-stone-200 font-sans font-bold text-[10px] mt-4 uppercase tracking-[0.3em]">¡Sé el primero en recomendar!</p>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
